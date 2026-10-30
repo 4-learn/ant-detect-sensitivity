@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>琉璃蟻偵測演算法 · 敏感度測試台</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+  <h1>🐜 琉璃蟻偵測演算法 · 敏感度測試台</h1>
+  <p class="sub">保留學生原版演算法（暗像素比例 + 全畫面移動量），把常數開放調整，用上傳的照片做敏感度分析。所有運算都在你的瀏覽器裡完成，照片不會上傳到任何伺服器。</p>
+</header>
+
+<main>
+  <!-- ========== 1. 影像 ========== -->
+  <section class="card" id="sec-images">
+    <h2>① 上傳影像</h2>
+    <div class="row">
+      <label class="btn">選擇圖片（可多選）<input type="file" id="file_input" accept="image/*" multiple hidden></label>
+      <button class="btn ghost" id="btn_demo">載入示範圖組</button>
+      <button class="btn ghost" id="btn_clear">清空</button>
+      <label class="inline">分析解析度
+        <select id="resize_mode">
+          <option value="0" selected>原圖尺寸</option>
+          <option value="800">SVGA 寬 800（ESP32 預設）</option>
+          <option value="640">VGA 寬 640</option>
+          <option value="400">CIF 寬 400</option>
+          <option value="320">QVGA 寬 320</option>
+        </select>
+      </label>
+    </div>
+    <div id="drop_zone" class="drop">把圖片拖到這裡。多張圖會依檔名排序，當成連續畫面：每張的「移動量」是跟前一張比較（學生程式每 2.5 秒比一次）。</div>
+    <p class="hint">要測移動量，請上傳同一位置、同一解析度連拍的照片（例如在 ESP32 網頁開 <code>http://192.168.4.1/capture</code> 每隔幾秒存一張）。尺寸不同的兩張圖，學生程式會把移動量算成 0。</p>
+    <div id="img_table_wrap" class="table-wrap"></div>
+  </section>
+
+  <!-- ========== 2. 參數 ========== -->
+  <section class="card" id="sec-params">
+    <h2>② 參數（預設值 = 學生原版）</h2>
+    <div id="param_box" class="params"></div>
+    <div class="row">
+      <button class="btn ghost" id="btn_reset">恢復學生預設值</button>
+      <span class="hint">調整後，上方表格與下方預覽會立即重算。</span>
+    </div>
+    <details>
+      <summary>判斷規則（學生原版邏輯）</summary>
+<pre>gray  = wR·R + wG·G + wB·B
+ratio = (gray &lt; 暗像素閾值 的像素數) / 總像素數
+avgDiff = 平均 |本張灰階 − 前一張灰階|
+
+if (ratio &gt; 比例下限 &amp;&amp; ratio &lt; 比例上限)
+    avgDiff &gt; 移動量閾值 ? 🐜 活動中 : ☠️ 群聚無位移
+else
+    ratio ≥ 比例上限 ? ⚠️ 大面積陰影/雜物 : ✅ 無琉璃蟻</pre>
+    </details>
+  </section>
+
+  <!-- ========== 3. 預覽 ========== -->
+  <section class="card" id="sec-preview">
+    <h2>③ 單張預覽</h2>
+    <div class="row">
+      <label class="inline"><input type="checkbox" id="show_mask" checked> 標出暗像素（紅色）</label>
+      <label class="inline"><input type="checkbox" id="show_box" checked> 畫出學生的固定框</label>
+    </div>
+    <div class="preview-grid">
+      <div class="preview-canvas-wrap"><canvas id="preview_canvas"></canvas><div id="preview_empty" class="empty">尚未選擇影像</div></div>
+      <div>
+        <div id="preview_info" class="info"></div>
+        <h3>灰階直方圖</h3>
+        <canvas id="hist_canvas" class="chart" width="520" height="180"></canvas>
+        <p class="hint">紅線 = 暗像素閾值，線左側的像素都算「暗」。</p>
+        <div id="bait_box" class="info"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 4. 敏感度 ========== -->
+  <section class="card" id="sec-sweep">
+    <h2>④ 敏感度分析</h2>
+    <div class="tabs">
+      <button class="tab active" data-tab="t1d">單參數掃描</button>
+      <button class="tab" data-tab="t2d">雙參數熱圖</button>
+    </div>
+
+    <div class="tabpane" id="t1d">
+      <div class="row">
+        <label class="inline">掃描參數 <select id="sw1_param"></select></label>
+        <label class="inline">從 <input type="number" id="sw1_from" step="any"></label>
+        <label class="inline">到 <input type="number" id="sw1_to" step="any"></label>
+        <label class="inline">間隔 <input type="number" id="sw1_step" step="any"></label>
+        <button class="btn" id="btn_sweep1">執行掃描</button>
+        <button class="btn ghost" id="btn_csv1" disabled>下載 CSV</button>
+      </div>
+      <p class="hint">其他參數固定為上方 ② 的目前值。</p>
+      <h3>每張影像的判定隨參數變化</h3>
+      <div class="legend" id="legend1"></div>
+      <canvas id="strip_canvas" class="chart"></canvas>
+      <h3>判定數量 / 指標</h3>
+      <canvas id="line_canvas" class="chart" width="900" height="300"></canvas>
+      <p class="hint" id="metric_hint">在表格的「人工標註」欄標出每張的真實狀態，這裡就會畫出準確率、偵出率（有螞蟻被抓到的比例）與特異度（沒螞蟻被正確排除的比例）。</p>
+      <div id="sweep1_summary" class="info"></div>
+    </div>
+
+    <div class="tabpane hidden" id="t2d">
+      <div class="grid2">
+        <fieldset>
+          <legend>X 軸</legend>
+          <label class="inline">參數 <select id="sw2x_param"></select></label><br>
+          <label class="inline">從 <input type="number" id="sw2x_from" step="any"></label>
+          <label class="inline">到 <input type="number" id="sw2x_to" step="any"></label>
+          <label class="inline">間隔 <input type="number" id="sw2x_step" step="any"></label>
+        </fieldset>
+        <fieldset>
+          <legend>Y 軸</legend>
+          <label class="inline">參數 <select id="sw2y_param"></select></label><br>
+          <label class="inline">從 <input type="number" id="sw2y_from" step="any"></label>
+          <label class="inline">到 <input type="number" id="sw2y_to" step="any"></label>
+          <label class="inline">間隔 <input type="number" id="sw2y_step" step="any"></label>
+        </fieldset>
+      </div>
+      <div class="row">
+        <label class="inline">顏色代表
+          <select id="sw2_metric">
+            <option value="accuracy">準確率（需人工標註）</option>
+            <option value="sensitivity">偵出率（需人工標註）</option>
+            <option value="specificity">特異度（需人工標註）</option>
+            <option value="pct_ant">判定「有螞蟻」的比例</option>
+            <option value="pct_active">判定「活動中」的比例</option>
+            <option value="pct_dead">判定「無位移」的比例</option>
+          </select>
+        </label>
+        <button class="btn" id="btn_sweep2">產生熱圖</button>
+        <button class="btn ghost" id="btn_csv2" disabled>下載 CSV</button>
+      </div>
+      <canvas id="heat_canvas" class="chart"></canvas>
+      <div id="heat_tip" class="info"></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>說明</h2>
+    <ul class="notes">
+      <li>演算法程式在 <code>js/algorithm.js</code>；學生原版逐字保留在 <code>original/student_algorithm.js</code>，並有測試確認預設參數下兩者結果一致。</li>
+      <li>學生程式在 ESP32 網頁上即時分析串流。這個頁面放在 GitHub Pages（HTTPS），瀏覽器會擋下對 <code>http://192.168.4.1</code> 的混合內容，所以這裡改用上傳照片的方式測試。</li>
+      <li>學生的紅框／紫框固定畫在畫面中央 40%，不代表螞蟻位置；預覽中保留它只是為了對照原版畫面。</li>
+      <li>ESP32 送出的是 JPEG，壓縮雜訊本身就會讓相鄰兩張的移動量大於 0。用手機照片測時，記得選接近 ESP32 的解析度。</li>
+    </ul>
+  </section>
+</main>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
