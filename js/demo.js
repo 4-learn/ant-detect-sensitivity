@@ -79,7 +79,7 @@ export async function makeDemoFrames() {
       },
     });
   }
-  // 手擋到的大陰影，無螞蟻
+  // 手擋到的大陰影，無螞蟻（暗像素約 18%，低於學生的 25% 上限 → 會被誤判成有螞蟻）
   specs.push({
     name: '08_shadow.jpg', label: 'none',
     draw: (ctx, r) => {
@@ -94,7 +94,8 @@ export async function makeDemoFrames() {
   for (let i = 0; i < specs.length; i++) {
     const c = document.createElement('canvas');
     c.width = W; c.height = H;
-    specs[i].draw(c.getContext('2d'), rng(1000 + i));
+    // 背景用同一個亂數種子：鏡頭固定、場景不變時，兩張之間的差異只來自螞蟻與 JPEG 壓縮
+    specs[i].draw(c.getContext('2d'), rng(1000));
     files.push(await toFile(c, 'demo_' + specs[i].name));
     labels['demo_' + specs[i].name] = specs[i].label;
   }

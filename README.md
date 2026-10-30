@@ -45,3 +45,15 @@ python3 -m http.server 8000
 ```
 
 頁面使用 ES modules，必須透過 HTTP 開啟，直接雙擊 HTML 檔案會無法載入。
+
+## 端對端測試（Python Playwright）
+
+```bash
+pip install playwright && playwright install chromium
+python test/e2e_pages.py                          # 測 GitHub Pages 上的版本
+python test/e2e_pages.py http://localhost:8000/   # 測本機
+```
+
+測試流程依序是：載入示範圖組、確認預設參數下的判定、調整參數後確認判定會改變、恢復預設值、上傳檔案、單參數掃描並下載 CSV、雙參數熱圖並下載 CSV，最後截圖。截圖預設存到系統暫存目錄，可以用環境變數 `SHOT_DIR` 指定位置。
+
+示範圖組是程式畫出來的合成畫面，只用來試操作流程。其中 `08_shadow` 是一個刻意保留的反例：陰影只佔約 18%，沒有超過學生設定的 25% 上限，所以會被誤判成「活動中」。
